@@ -2241,6 +2241,10 @@ namespace MediaPortal.Player
         _vmr9.AddVMR9(_graphBuilder);
         _vmr9.Enable(false);
 
+        // Set VideoDecoder and VC1Override before adding filter in graph
+        SetVideoDecoder();
+        SetVC1Override();
+
         // Add preferred video filters
         UpdateFilters("Video");
 
@@ -2274,8 +2278,6 @@ namespace MediaPortal.Player
         Log.Info("BDPlayer: Render BDReader outputs");
 
         DirectShowUtil.RenderUnconnectedOutputPins(_graphBuilder, _interfaceBDReader);
-        SetVideoDecoder();
-        SetVC1Override();
         DirectShowUtil.RemoveUnusedFiltersFromGraph(_graphBuilder);
 
         #endregion
@@ -2362,6 +2364,7 @@ namespace MediaPortal.Player
         dsfilter = DirectShowUtil.AddFilterToGraph(_graphBuilder, filter);
       dsfilter.GetClassID(out guid);
       _ireader.SetVideoDecoder((int)BDStream, ref guid);
+      _graphBuilder.RemoveFilter(dsfilter);
       DirectShowUtil.ReleaseComObject(dsfilter);
       dsfilter = null;
     }
