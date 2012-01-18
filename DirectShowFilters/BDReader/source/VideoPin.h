@@ -44,6 +44,7 @@ public:
   HRESULT CheckConnect(IPin *pReceivePin);
   HRESULT FillBuffer(IMediaSample *pSample);
   HRESULT BreakConnect();
+  HRESULT DoBufferProcessingLoop();
 
   // CSourceSeeking
   HRESULT ChangeStart();
@@ -70,13 +71,13 @@ public:
 protected:
   DWORD ThreadProc();
 
-  void CreateEmptySample(IMediaSample* pSample);
   void LogMediaType(AM_MEDIA_TYPE* pmt);
   bool CompareMediaTypes(AM_MEDIA_TYPE* lhs_pmt, AM_MEDIA_TYPE* rhs_pmt);
+  HRESULT GetMediaTypeInternal(CMediaType* pmt);
   
   void CheckPlaybackState();
   bool CheckVideoFormat(GUID* pFormat, CLSID* pDecoder);
-  CLSID GetDecoderCLSID();
+  CLSID GetDecoderCLSID(IPin* pPin);
 
   CBDReaderFilter* const m_pFilter;
   CDeMultiplexer& m_demux;
@@ -90,12 +91,15 @@ protected:
   CLSID m_VC1decoder;
   CLSID m_H264decoder;
   CLSID m_MPEG2decoder;
+  
+  CLSID m_currentDecoder;
 
   GUID m_VC1Override;
 
   REFERENCE_TIME m_rtStreamOffset;
 
   Packet* m_pCachedBuffer;
+  bool m_bProvidePMT;
 
   CAMEvent* m_eFlushStart;
   bool m_bFlushing;
@@ -107,7 +111,6 @@ protected:
   bool m_bStopWait;
   bool m_bZeroTimeStream;
 
-  REFERENCE_TIME m_rtPrevSample;
   REFERENCE_TIME m_rtStreamTimeOffset;
   REFERENCE_TIME m_rtTitleDuration;
 
