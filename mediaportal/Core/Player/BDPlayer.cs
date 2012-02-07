@@ -311,6 +311,7 @@ namespace MediaPortal.Player
     {
       None,
       Root,
+      RootPending,
       PopUp
     }
 
@@ -527,6 +528,7 @@ namespace MediaPortal.Player
     protected MenuState menuState;
     protected bool _subtitlesEnabled = true;
     protected bool _bPopupMenuAvailable = true;
+    protected Guid GuidFilter;
     #endregion
 
     #region ctor/dtor
@@ -562,7 +564,7 @@ namespace MediaPortal.Player
         switch (action.wID)
         {
           case GUI.Library.Action.ActionType.ACTION_MOUSE_MOVE:
-            if (menuState == MenuState.None)
+            if (menuState == MenuState.None || menuState == MenuState.RootPending)
               return false;
             int x = (int)((action.fAmount1 - PlaneScene.DestRect.X) / ((float)PlaneScene.DestRect.Width / 1920.0f));
             int y = (int)((action.fAmount2 - PlaneScene.DestRect.Y) / ((float)PlaneScene.DestRect.Height / 1080.0f));
@@ -571,54 +573,54 @@ namespace MediaPortal.Player
             return true;
 
           case GUI.Library.Action.ActionType.ACTION_MOUSE_CLICK:
-            if (menuState == MenuState.None)
+            if (menuState == MenuState.None || menuState == MenuState.RootPending)
               return false;
             Log.Debug("BDPlayer: Mouse select");
             _ireader.Action((int)BDKeys.BD_VK_MOUSE_ACTIVATE);
             return true;
 
           case GUI.Library.Action.ActionType.ACTION_MOVE_LEFT:
-            if (menuState == MenuState.None)
+            if (menuState == MenuState.None || menuState == MenuState.RootPending)
               return false;
             Log.Debug("BDPlayer: Move left");
             _ireader.Action((int)BDKeys.BD_VK_LEFT);
             return true;
 
           case GUI.Library.Action.ActionType.ACTION_MOVE_RIGHT:
-            if (menuState == MenuState.None)
+            if (menuState == MenuState.None || menuState == MenuState.RootPending)
               return false;
             Log.Debug("BDPlayer: Move right");
             _ireader.Action((int)BDKeys.BD_VK_RIGHT);
             return true;
 
           case GUI.Library.Action.ActionType.ACTION_MOVE_UP:
-            if (menuState == MenuState.None)
+            if (menuState == MenuState.None || menuState == MenuState.RootPending)
               return false;
             Log.Debug("BDPlayer: Move up");
             _ireader.Action((int)BDKeys.BD_VK_UP);
             return true;
 
           case GUI.Library.Action.ActionType.ACTION_MOVE_DOWN:
-            if (menuState == MenuState.None)
+            if (menuState == MenuState.None || menuState == MenuState.RootPending)
               return false;
             Log.Debug("BDPlayer: Move down");
             _ireader.Action((int)BDKeys.BD_VK_DOWN);
             return true;
 
           case GUI.Library.Action.ActionType.ACTION_SELECT_ITEM:
-            if (menuState == MenuState.None)
+            if (menuState == MenuState.None || menuState == MenuState.RootPending)
               return false;
             Log.Debug("BDPlayer: Select");
             _ireader.Action((int)BDKeys.BD_VK_ENTER);
             return true;
 
           case GUI.Library.Action.ActionType.ACTION_DVD_MENU:
-            if (!Playing || _forceTitle || menuState != MenuState.None)
+            if (!Playing || _forceTitle || menuState == MenuState.PopUp || menuState == MenuState.Root)
               return true;
             Speed = 1;
             //Log.Debug("BDPlayer: Main menu");
             if (_ireader.Action((int)BDKeys.BD_VK_ROOT_MENU) == 0)
-              menuState = MenuState.Root;
+              menuState = MenuState.RootPending;
             return true;
 
           case GUI.Library.Action.ActionType.ACTION_BD_POPUP_MENU:
@@ -667,7 +669,7 @@ namespace MediaPortal.Player
 
     public override bool CanSeek()
     {
-      return _state == PlayState.Playing && menuState == MenuState.None;      
+      return _state == PlayState.Playing && (menuState == MenuState.None || menuState == MenuState.RootPending);      
     }
 
     /// <summary>
@@ -1779,7 +1781,7 @@ namespace MediaPortal.Player
             break;          
 
           case (int)BDEvents.BD_EVENT_MENU:
-            Log.Debug("BDPlayer: Menu available {0}", bdevent.Param);
+            Log.Debug("BDPlayer: Menu visible {0}", bdevent.Param);
             if (bdevent.Param == 1)
             {
               if (menuState != MenuState.PopUp)
@@ -2341,7 +2343,7 @@ namespace MediaPortal.Player
       }
       else
       {
-        ExportGuidFilterAndRelease(filterConfig.VideoH264, BluRayStreamFormats.BLURAY_STREAM_TYPE_VIDEO_MPEG2);
+        _ireader.SetVideoDecoder((int)BluRayStreamFormats.BLURAY_STREAM_TYPE_VIDEO_MPEG2, ref GuidFilter);
       }
 
       if (filterConfig.VideoVC1 != filterConfig.VideoH264 || filterConfig.VideoVC1 != filterConfig.VideoMPEG)
@@ -2350,19 +2352,18 @@ namespace MediaPortal.Player
       }
       else
       {
-        ExportGuidFilterAndRelease(filterConfig.VideoH264, BluRayStreamFormats.BLURAY_STREAM_TYPE_VIDEO_VC1);
+        _ireader.SetVideoDecoder((int)BluRayStreamFormats.BLURAY_STREAM_TYPE_VIDEO_VC1, ref GuidFilter);
       }
     }
 
     private void ExportGuidFilterAndRelease(string filter, BluRayStreamFormats BDStream)
     {
-      Guid guid;
       IBaseFilter dsfilter;
       dsfilter = DirectShowUtil.GetFilterByName(_graphBuilder, filter);
       if (dsfilter == null)
         dsfilter = DirectShowUtil.AddFilterToGraph(_graphBuilder, filter);
-      dsfilter.GetClassID(out guid);
-      _ireader.SetVideoDecoder((int)BDStream, ref guid);
+      dsfilter.GetClassID(out GuidFilter);
+      _ireader.SetVideoDecoder((int)BDStream, ref GuidFilter);
       _graphBuilder.RemoveFilter(dsfilter);
       DirectShowUtil.ReleaseComObject(dsfilter);
       dsfilter = null;
