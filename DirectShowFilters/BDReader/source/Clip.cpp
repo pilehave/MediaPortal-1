@@ -39,9 +39,11 @@ CClip::CClip(int clipNumber, int playlistNumber, REFERENCE_TIME firstPacketTime,
   nClip=clipNumber;
   nPlaylist = playlistNumber;
 
+  nVideoPackets = 0;
+
   playlistFirstPacketTime=firstPacketTime;
 
-  lastVideoPosition=playlistFirstPacketTime;
+  lastVideoPosition = playlistFirstPacketTime;
   lastAudioPosition = playlistFirstPacketTime;
   audioPlaybackPosition = playlistFirstPacketTime;
   videoPlaybackPosition = playlistFirstPacketTime;
@@ -55,7 +57,9 @@ CClip::CClip(int clipNumber, int playlistNumber, REFERENCE_TIME firstPacketTime,
   m_rtClipStartingOffset = 0LL;
 
   noAudio=!audioPresent;
-  
+  sparseVideo = false;
+  m_pSparseVideoPacket = NULL;
+
   bSeekTarget = seekTarget;
 
   superceeded=0;
@@ -77,6 +81,9 @@ CClip::~CClip(void)
   FlushAudio();
   FlushVideo();
   DeleteMediaType(m_videoPmt);
+  if (m_pSparseVideoPacket)
+    delete m_pSparseVideoPacket;
+  m_pSparseVideoPacket = NULL;
 }
 
 Packet* CClip::ReturnNextAudioPacket(REFERENCE_TIME playlistOffset)
@@ -141,7 +148,11 @@ Packet* CClip::ReturnNextVideoPacket(REFERENCE_TIME playlistOffset)
     return ReturnNextVideoPacket(playlistOffset);
   }
   Packet* ret=NULL;
-  if (m_vecClipVideoPackets.size()>0 && m_videoPmt)
+  if (sparseVideo && m_videoPmt)
+  {
+    ret = GenerateSparseVideo(playlistOffset);
+  }
+  else if (m_vecClipVideoPackets.size()>0 && m_videoPmt)
   {
     ivecVideoBuffers it = m_vecClipVideoPackets.begin();
     ret=*it;
@@ -257,6 +268,8 @@ bool CClip::AcceptVideoPacket(Packet*  packet)
   }
   else
   {
+    nVideoPackets++;
+    if (sparseVideo && nVideoPackets>4) sparseVideo = false;
     if (!firstPacketReturned && packet->rtStart != Packet::INVALID_TIME)
     {
       if (earliestPacketAccepted > packet->rtStart) earliestPacketAccepted = packet->rtStart;
@@ -269,9 +282,19 @@ bool CClip::AcceptVideoPacket(Packet*  packet)
         m_rtClipStartingOffset = packet->rtStart - playlistFirstPacketTime;
       }
     }
-    m_vecClipVideoPackets.push_back(packet);
     if (packet->rtStart != Packet::INVALID_TIME)
+    {
+      if (packet->rtStart - lastVideoPosition > ONE_SECOND && !sparseVideo)
+      {
+        if (m_vecClipVideoPackets.size()>0 && nVideoPackets < 5)
+        {
+          LogDebug("Sparse Video detected, ONE_SECOND gap");
+          sparseVideo = true;
+        }
+      }
       lastVideoPosition=packet->rtStart;
+    }
+    m_vecClipVideoPackets.push_back(packet);
   }
   return true;
 }
@@ -284,6 +307,14 @@ void CClip::Superceed(int superceedType)
   {
     LogDebug("Setting Fake Audio for clip %d", nClip);
     noAudio = true;
+  }
+  if ((superceedType == SUPERCEEDED_VIDEO_FILL) && (lastVideoPosition + HALF_SECOND < playlistFirstPacketTime + clipDuration))
+  {
+    if (nVideoPackets < 5)
+    {
+      LogDebug("SparseVideo detected Over 0.5 Seconds from end on superceeded");
+      sparseVideo = true;
+    }
   }
 }
 
@@ -346,7 +377,7 @@ void CClip::Reset(REFERENCE_TIME totalStreamOffset)
   if (clipPlaylistOffset != totalStreamOffset)
   {
     clipReset = true;
-    clipPlaylistOffset != totalStreamOffset;
+    clipPlaylistOffset = totalStreamOffset;
   }
   audioPlaybackPosition = playlistFirstPacketTime;
   videoPlaybackPosition = playlistFirstPacketTime;
@@ -355,6 +386,12 @@ void CClip::Reset(REFERENCE_TIME totalStreamOffset)
   earliestPacketAccepted = INT64_MAX;
 
   superceeded=0;
+  sparseVideo = false;
+  if (m_pSparseVideoPacket)
+  {
+    delete m_pSparseVideoPacket;
+    m_pSparseVideoPacket = NULL;
+  }
 
   firstAudio=true;
   firstVideo=true;
@@ -381,7 +418,8 @@ bool CClip::HasVideo()
   CAutoLock vectorVLock(&m_sectionVectorVideo);
 //  if (!noAudio  && firstAudio ) return false;
   if (!m_videoPmt) return false;
-  if (firstVideo && !IsSuperceeded(SUPERCEEDED_VIDEO_FILL) && m_vecClipVideoPackets.size() < 1) return false;
+  if (firstVideo && !IsSuperceeded(SUPERCEEDED_VIDEO_FILL) && m_vecClipVideoPackets.size() < 2) return false;
+  if (sparseVideo && SparseVideoAvailable()) return true;
   if (m_vecClipVideoPackets.size()>0) return true;
   return false;
 }
@@ -405,7 +443,8 @@ REFERENCE_TIME CClip::PlayedDuration()
   REFERENCE_TIME start = earliestPacketAccepted;
   REFERENCE_TIME finish = audioPlaybackPosition;
   REFERENCE_TIME playDuration=0LL;
-  LogDebug("CClip::earliestPacketAccepted %I64d audioPlaybackPosition %I64d videoPlaybackPosition %I64d %d %d", earliestPacketAccepted, audioPlaybackPosition, videoPlaybackPosition, firstAudio, firstVideo);
+  LogDebug("CClip::(%d,%d) earliestPacketAccepted %I64d audioPlaybackPosition %I64d videoPlaybackPosition %I64d a:%d v:%d Sparse:%d",
+    nPlaylist, nClip, earliestPacketAccepted, audioPlaybackPosition, videoPlaybackPosition, firstAudio, firstVideo, sparseVideo);
   if (!firstPacketReturned || !firstPacketAccepted) 
   {
     LogDebug("CClip::PlayedDuration 0 - clip unplayed");
@@ -416,9 +455,9 @@ REFERENCE_TIME CClip::PlayedDuration()
     finish = videoPlaybackPosition;
   }
   // slight hack for clips with no audio and only 1 or 2 video frames
-  if (((firstVideo || firstAudio) && !(firstVideo && firstAudio)) && noAudio) 
+  if ((((firstVideo || firstAudio) && !(firstVideo && firstAudio)) || nVideoPackets<5) && noAudio) 
   {
-    LogDebug("CClip::PlayedDuration %I64d - full duration chosen, single image clip detected",clipDuration - earliestPacketAccepted + playlistFirstPacketTime);
+    LogDebug("CClip::PlayedDuration %I64d - full duration chosen, sparse image clip detected",clipDuration - earliestPacketAccepted + playlistFirstPacketTime);
     return clipDuration - earliestPacketAccepted + playlistFirstPacketTime;
   }
   playDuration = finish - playlistFirstPacketTime;
@@ -440,4 +479,79 @@ void CClip::SetVideoPMT(AM_MEDIA_TYPE *pmt)
 {
   if (m_videoPmt) DeleteMediaType(m_videoPmt);
   m_videoPmt = CreateMediaType(pmt);
+}
+
+bool CClip::SparseVideoAvailable()
+{
+  bool ret = false;
+  
+  if (videoPlaybackPosition + HALF_SECOND < playlistFirstPacketTime + clipDuration && (m_pSparseVideoPacket || m_vecClipVideoPackets.size()>0)) ret = true;
+
+  return ret;
+}
+
+Packet* CClip::GenerateSparseVideo(REFERENCE_TIME rtStart)
+{
+  Packet * ret = NULL;
+  if (!SparseVideoAvailable() && m_vecClipVideoPackets.size()==0) return ret;
+  if (m_pSparseVideoPacket != NULL)
+  {
+    if (m_vecClipVideoPackets.size()>0)
+    {
+      Packet * pBDPacket = m_vecClipVideoPackets[0];
+      if (m_pSparseVideoPacket->rtStart + ONE_SECOND > pBDPacket->rtStart)
+      {
+        ivecVideoBuffers it = m_vecClipVideoPackets.begin();
+        if ((*it)->rtStart !=Packet::INVALID_TIME)
+        {
+          delete m_pSparseVideoPacket;
+          m_pSparseVideoPacket=*it;
+          it=m_vecClipVideoPackets.erase(it);
+        }
+        else
+        {
+          it=m_vecClipVideoPackets.erase(it);
+          if (!m_vecClipVideoPackets.size()) sparseVideo = false;
+          return *it;
+        }
+      }
+      else
+      {
+        m_pSparseVideoPacket->rtStart += HALF_SECOND/5;
+        m_pSparseVideoPacket->rtStop += HALF_SECOND/5;
+        m_pSparseVideoPacket->bFakeData = true;
+      }
+    }
+    else
+    {
+      m_pSparseVideoPacket->rtStart += HALF_SECOND/5;
+      m_pSparseVideoPacket->rtStop += HALF_SECOND/5;
+      m_pSparseVideoPacket->bFakeData = true;
+    }
+    ret = new Packet();
+    ret->SetData(m_pSparseVideoPacket->GetData(),m_pSparseVideoPacket->GetDataSize());
+    ret->CopyProperties(*m_pSparseVideoPacket);
+  }
+  else
+  {
+    if (m_vecClipVideoPackets.size()>0)
+    {
+      ivecVideoBuffers it = m_vecClipVideoPackets.begin();
+      if ((*it)->rtStart !=Packet::INVALID_TIME)
+      {
+        m_pSparseVideoPacket=*it;
+        it=m_vecClipVideoPackets.erase(it);
+        ret = new Packet();
+        ret->SetData(m_pSparseVideoPacket->GetData(),m_pSparseVideoPacket->GetDataSize());
+        ret->CopyProperties(*m_pSparseVideoPacket);
+      }
+      else
+      {
+        it=m_vecClipVideoPackets.erase(it);
+        if (!m_vecClipVideoPackets.size()) sparseVideo = false;
+        return *it;
+      }
+    }
+  }
+  return ret;
 }

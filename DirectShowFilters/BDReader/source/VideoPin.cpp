@@ -539,7 +539,10 @@ HRESULT CVideoPin::FillBuffer(IMediaSample* pSample)
               // to downstream filters in a case where we are waiting for the audio pin to see the clip boundary as
               // we cannot provide yet the next clip's PMT downstream since audio stream could require a rebuild
               if (m_currentDecoder == CLSID_LAVVideo && (buffer->nNewSegment & NS_SEEK_TARGET) != NS_SEEK_TARGET)
+              {
+                LogDebug("DeliverEndOFStream LAV Only for audio pin wait (%d,%d)", buffer->nPlaylist, buffer->nClipNumber);
                 DeliverEndOfStream();
+              }
             }
             if ((buffer->nNewSegment & NS_STREAM_RESET) == NS_STREAM_RESET)
             {
@@ -563,12 +566,14 @@ HRESULT CVideoPin::FillBuffer(IMediaSample* pSample)
             
               HRESULT hrAccept = S_FALSE;
 
+              m_bProvidePMT = true;
+
               if (m_pReceiver && CheckVideoFormat(&buffer->pmt->subtype, &m_currentDecoder))
               {
                 // Currently no other video decoders than LAV seems to be compatible with
                 // the dynamic format changes
                 if (m_currentDecoder == CLSID_LAVVideo)
-                  hrAccept = m_pReceiver->QueryAccept(buffer->pmt);
+                hrAccept = m_pReceiver->QueryAccept(buffer->pmt);
               }
 
               if (hrAccept != S_OK)
@@ -582,7 +587,8 @@ HRESULT CVideoPin::FillBuffer(IMediaSample* pSample)
                 m_bZeroTimeStream = true;
                 checkPlaybackState = true;
 
-                DeliverEndOfStream();
+                //LogDebug("DeliverEndOFStream for rebuild (%d,%d)", buffer->nPlaylist, buffer->nClipNumber);
+                //DeliverEndOfStream();
               }
               else
               {
@@ -593,10 +599,12 @@ HRESULT CVideoPin::FillBuffer(IMediaSample* pSample)
 
                 buffer->nNewSegment = 0;
                 m_pCachedBuffer = buffer;
-                m_bProvidePMT = true;
 				
-                if (m_currentDecoder == CLSID_LAVVideo)
-                  DeliverEndOfStream();
+                //if (m_currentDecoder == CLSID_LAVVideo)
+                //{
+                //  LogDebug("DeliverEndOFStream LAV Only (%d,%d)", buffer->nPlaylist, buffer->nClipNumber);
+                //  DeliverEndOfStream();
+                //}
 
                 return ERROR_NO_DATA;
               }
@@ -817,5 +825,25 @@ void CVideoPin::LogMediaType(AM_MEDIA_TYPE* pmt)
       pmt->subtype.Data4[0], pmt->subtype.Data4[1], pmt->subtype.Data4[2],
       pmt->subtype.Data4[3], pmt->subtype.Data4[4], pmt->subtype.Data4[5], 
       pmt->subtype.Data4[6], pmt->subtype.Data4[7]);
+    if (pmt->formattype == FORMAT_MPEG2Video)
+    {
+      MPEG2VIDEOINFO * mp2vi = (MPEG2VIDEOINFO *) pmt->pbFormat;
+      LogDebug("MPEG2 flags %4X, level %d profile %d", mp2vi->dwFlags, mp2vi->dwLevel, mp2vi->dwProfile);
+    }
+    else if (pmt->formattype == FORMAT_VideoInfo)
+    {
+      VIDEOINFOHEADER * vih = (VIDEOINFOHEADER *) pmt->pbFormat;
+      LogDebug("VIH AvgTimePerFrame %I64d", vih->AvgTimePerFrame); 
+    }
+    else if (pmt->formattype == FORMAT_VideoInfo2)
+    {
+      VIDEOINFOHEADER2 * vih2 = (VIDEOINFOHEADER2 *) pmt->pbFormat;
+      LogDebug("VIH2 AvgTimePerFrame %I64d interlaced %4X Aspect ratio X %d Aspect ratio Y %d Control flags %4X", vih2->AvgTimePerFrame, vih2->dwInterlaceFlags, vih2->dwPictAspectRatioX, vih2->dwPictAspectRatioY, vih2->dwControlFlags);  
+    }
+    else if (pmt->formattype == FORMAT_MPEGVideo)
+    {
+      MPEG1VIDEOINFO * mp1vi = (MPEG1VIDEOINFO *) pmt->pbFormat;
+      LogDebug("MPEG1 GOP start %d", mp1vi->dwStartTimeCode);  
+    }
   }
 }

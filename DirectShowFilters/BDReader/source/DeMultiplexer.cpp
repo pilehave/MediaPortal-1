@@ -377,7 +377,6 @@ HRESULT CDeMultiplexer::FlushToChapter(UINT32 nChapter)
   // Make sure data isn't being processed
   CAutoLock lockRead(&m_sectionRead);
 
-  FlushPESBuffers(true);
 
   CAutoLock lockVid(&m_sectionVideo);
   CAutoLock lockAud(&m_sectionAudio);
@@ -385,11 +384,13 @@ HRESULT CDeMultiplexer::FlushToChapter(UINT32 nChapter)
 
   m_playlistManager->ClearAllButCurrentClip();
   hr = m_filter.lib.SetChapter(nChapter);
-
-  FlushAudio();
-  FlushVideo();
-  FlushSubtitle();
-
+  if (hr)
+  {
+    FlushPESBuffers(true);
+    FlushAudio();
+    FlushVideo();
+    FlushSubtitle();
+  }
   SetHoldAudio(false);
   SetHoldVideo(false);
   SetHoldSubtitle(false);
@@ -454,8 +455,14 @@ Packet* CDeMultiplexer::GetVideo()
     if (m_filter.IsStopping() || m_bEndOfFile || ReadFromFile() <= 0)
       return NULL;
   }
+  Packet * ret = m_playlistManager->GetNextVideoPacket();
 
-  return m_playlistManager->GetNextVideoPacket();
+  if (ret && ret->bFakeData)
+  {
+    ReadFromFile();
+  }
+
+  return ret;
 }
 
 Packet* CDeMultiplexer::GetAudio(int playlist, int clip)
@@ -710,6 +717,7 @@ void CDeMultiplexer::HandleBDEvent(BD_EVENT& pEv, UINT64 /*pPos*/)
         {
           REFERENCE_TIME clipOffset = m_rtOffset * -1;
 
+          FlushPESBuffers(false);
           interrupted = m_playlistManager->CreateNewPlaylistClip(m_nPlaylist, m_nClip, AudioStreamsAvailable(clip), 
             CONVERT_90KHz_DS(clipIn), CONVERT_90KHz_DS(clipOffset), CONVERT_90KHz_DS(duration));
 
@@ -720,8 +728,6 @@ void CDeMultiplexer::HandleBDEvent(BD_EVENT& pEv, UINT64 /*pPos*/)
             REFERENCE_TIME rtClipStart = 0LL;
             Flush(true, true, rtClipStart);
           }
-          else
-            FlushPESBuffers(false);
         }
 
         m_bVideoFormatParsed = false;
@@ -932,6 +938,7 @@ void CDeMultiplexer::FillAudio(CTsHeader& header, byte* tsPacket)
 
 void CDeMultiplexer::FlushPESBuffers(bool pDiscardData)
 {
+  LogDebug("Demux::Flushing PES %d", pDiscardData);
   if (m_videoServiceType != NO_STREAM && !pDiscardData)
   {
     if (m_videoServiceType == BLURAY_STREAM_TYPE_VIDEO_MPEG1 ||
@@ -958,6 +965,9 @@ void CDeMultiplexer::FlushPESBuffers(bool pDiscardData)
   m_nMPEG2LastClip = -1;
   delete m_pCurrentAudioBuffer;
   m_pCurrentAudioBuffer = NULL;
+  if (!pDiscardData) 
+    m_playlistManager->CurrentClipFilled();
+
 }
 
 void CDeMultiplexer::FillVideo(CTsHeader& header, byte* tsPacket)
