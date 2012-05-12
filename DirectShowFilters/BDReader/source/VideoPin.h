@@ -50,6 +50,7 @@ public:
   HRESULT ChangeStart();
   HRESULT ChangeStop();
   HRESULT ChangeRate();
+  STDMETHODIMP SetRate(double dRate);
   HRESULT OnThreadStartPlay();
   STDMETHODIMP SetPositions(LONGLONG *pCurrent, DWORD CurrentFlags, LONGLONG *pStop, DWORD StopFlags);
   STDMETHODIMP GetAvailable( LONGLONG * pEarliest, LONGLONG * pLatest );
@@ -59,7 +60,6 @@ public:
 
   HRESULT DeliverBeginFlush();
   HRESULT DeliverEndFlush();
-
   HRESULT DeliverNewSegment(REFERENCE_TIME tStart, REFERENCE_TIME tStop, double dRate);
   
   bool IsConnected();
@@ -67,7 +67,6 @@ public:
   void SetInitialMediaType(const CMediaType* pmt);
   void SetVideoDecoder(int format, GUID* decoder);
   void SetVC1Override(GUID* subtype);
-  void SetRunningStatus(bool bOnOff);
 
 protected:
   DWORD ThreadProc();

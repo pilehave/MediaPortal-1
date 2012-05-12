@@ -538,16 +538,14 @@ HRESULT CVideoPin::FillBuffer(IMediaSample* pSample)
               // LAV video decoder requires an end of stream notification to be able to provide complete video frames
               // to downstream filters in a case where we are waiting for the audio pin to see the clip boundary as
               // we cannot provide yet the next clip's PMT downstream since audio stream could require a rebuild
-              if (m_currentDecoder == CLSID_LAVVideo && (buffer->nNewSegment & NS_SEEK_TARGET) != NS_SEEK_TARGET)
+              if (m_currentDecoder == CLSID_LAVVideo && (buffer->nNewSegment & NS_NEW_PLAYLIST))
               {
                 LogDebug("DeliverEndOFStream LAV Only for audio pin wait (%d,%d)", buffer->nPlaylist, buffer->nClipNumber);
                 DeliverEndOfStream();
               }
             }
             if ((buffer->nNewSegment & NS_STREAM_RESET) == NS_STREAM_RESET)
-            {
               m_bInitDuration = true;
-            }
           }
 
           if (buffer->pmt)
@@ -565,7 +563,6 @@ HRESULT CVideoPin::FillBuffer(IMediaSample* pSample)
               LogMediaType(buffer->pmt);
             
               HRESULT hrAccept = S_FALSE;
-
               m_bProvidePMT = true;
 
               if (m_pReceiver && CheckVideoFormat(&buffer->pmt->subtype, &m_currentDecoder))
@@ -654,7 +651,7 @@ HRESULT CVideoPin::FillBuffer(IMediaSample* pSample)
           if (m_bInitDuration)
           {
             m_pFilter->SetTitleDuration(m_rtTitleDuration);
-            m_pFilter->ResetPlaybackOffset(buffer->rtPlaylistTime);
+            m_pFilter->ResetPlaybackOffset(buffer->rtPlaylistTime - rtCorrectedStartTime);
             m_bInitDuration = false;
           }
 
@@ -783,6 +780,14 @@ HRESULT CVideoPin::ChangeRate()
   return S_OK;
 }
 
+STDMETHODIMP CVideoPin::SetRate(double dRate)
+{
+  if (dRate != 1.0)
+    return VFW_E_UNSUPPORTED_AUDIO;  
+  else
+    return S_OK;
+}
+
 STDMETHODIMP CVideoPin::GetCurrentPosition(LONGLONG *pCurrent)
 {
   //LogDebug("vid:GetCurrentPosition");
@@ -848,8 +853,3 @@ void CVideoPin::LogMediaType(AM_MEDIA_TYPE* pmt)
   }
 }
 
-void CVideoPin::SetRunningStatus(bool bOnOff)
-{
-  if (bOnOff)
-    m_bInitDuration = true;
-}

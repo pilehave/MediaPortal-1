@@ -67,11 +67,13 @@ public:
   HRESULT BreakConnect();
   HRESULT OnThreadStartPlay();
   HRESULT OnThreadDestroy();  
+  HRESULT DoBufferProcessingLoop();
 
   // CSourceSeeking
   HRESULT ChangeStart();
   HRESULT ChangeStop();
   HRESULT ChangeRate();
+  STDMETHODIMP SetRate(double dRate);
   STDMETHODIMP SetPositions(LONGLONG* pCurrent, DWORD CurrentFlags, LONGLONG* pStop, DWORD StopFlags);
   STDMETHODIMP GetAvailable(LONGLONG* pEarliest, LONGLONG* pLatest);
   STDMETHODIMP GetDuration(LONGLONG* pDuration);
@@ -89,7 +91,6 @@ protected:
 
   void JoinAudioBuffers(Packet* pBuffer, CDeMultiplexer* pDemuxer);
   void ProcessAudioSample(Packet* pBuffer, IMediaSample* pSample);
-  void CreateEmptySample(IMediaSample* pSample);
 
   inline void ConvertLPCMFromBE(BYTE* src, void* dest, int channels, int nSamples, int sampleSize, int channelMap);
   
