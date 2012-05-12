@@ -193,6 +193,7 @@ public:
   double         GetCycleDifference();
   double         GetDetectedFrameTime();
   double         GetRealFramePeriod();
+  double         GetVideoFramePeriod(int fpsSource);
   void           GetFrameRateRatio();
 
   void           NotifyTimer(LONGLONG targetTime);
@@ -209,6 +210,7 @@ public:
   
   void           NotifyRateChange(double pRate);
   void           NotifyDVDMenuState(bool pIsInMenu);
+  void           UpdateDisplayFPS();
 
   bool           m_bScrubbing;
   bool           m_bZeroScrub;
@@ -219,8 +221,8 @@ protected:
   void           GetAVSyncClockInterface();
   void           SetupAudioRenderer();
   void           AdjustAVSync(double currentPhaseDiff);
-  int            MeasureScanLines(LONGLONG startTime, double *times, double *scanLines, int n);
-  BOOL           EstimateRefreshTimings();
+  int            MeasureScanLines(LONGLONG startTime, double *times, double *scanLines, int n, UINT *maxScanLine);
+  BOOL           EstimateRefreshTimings(int numFrames, int thrdPrio);
   void           ReleaseSurfaces();
   HRESULT        Paint(CComPtr<IDirect3DSurface9> pSurface);
   HRESULT        SetMediaType(CComPtr<IMFMediaType> pType, BOOL* pbHasChanged);
@@ -250,7 +252,7 @@ protected:
   HRESULT        GetFreeSample(IMFSample** ppSample);
   void           ReturnSample(IMFSample* pSample, BOOL tryNotify);
   HRESULT        PresentSample(IMFSample* pSample);
-  void           CorrectSampleTime(IMFSample* pSample);
+  void           VideoFpsFromSample(IMFSample* pSample);
   void           GetRealRefreshRate();
   LONGLONG       GetDelayToRasterTarget(LONGLONG *targetTime, LONGLONG *offsetTime);
   void           DwmEnableMMCSSOnOff(bool enable);
@@ -272,6 +274,7 @@ protected:
   CComPtr<IMFSample>                samples[NUM_SURFACES];
   CCritSec                          m_lockSamples;
   CCritSec                          m_lockScheduledSamples;
+  CCritSec                          m_lockRasterData;
   CCritSec                          m_lockCallback;
   int                               m_iFreeSamples;
   IMFSample*                        m_vFreeSamples[NUM_SURFACES];
@@ -413,9 +416,15 @@ protected:
   LONGLONG      m_DectedSum;
   int           m_DetectedFrameTimePos;
   double        m_DetectedFrameTime;
+  double        m_DetdFrameTimeLast;
   double        m_DetectedFrameTimeStdDev;
   bool          m_DetectedLock;
   double        m_DetFrameTimeAve;
+
+  // Used for detecting the average video sample duration
+  LONGLONG      m_DetSampleHistory[NB_DFTHSIZE];
+  LONGLONG      m_DetSampleSum;
+  double        m_DetSampleAve;
 
   int           m_frameRateRatio;
   int           m_rawFRRatio;
