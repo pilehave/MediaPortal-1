@@ -313,7 +313,7 @@ namespace MediaPortal.Configuration
           {
             FiltersWinDVD7Decoder windvdConfig = new FiltersWinDVD7Decoder();
             AddSection(new ConfigPage(filterSection, windvdConfig, true));
-          }          
+          }
           if (filter.Equals("DScaler Audio Decoder"))
           {
             FiltersDScalerAudio dscalerConfig = new FiltersDScalerAudio();
@@ -544,15 +544,15 @@ namespace MediaPortal.Configuration
       MovieDatabase movieDbConfig = new MovieDatabase();
       AddSection(new ConfigPage(movie, movieDbConfig, false));
       Log.Info("  add video player section");
-      AddSection(new ConfigPage(movie, new MoviePlayer(), false));
-      Log.Info("  add video zoom section");
-      AddSection(new ConfigPage(movie, new MovieZoom(), false));
-      Log.Info("  add video extensions section");
+      AddSection(new ConfigPage(movie, new MoviePlayer(), false));*/
+      Log.Info("  add blu-ray video zoom section");
+      AddSection(new ConfigPage(bd, new BDZoom(), false));
+      /*Log.Info("  add video extensions section");
       AddSection(new ConfigPage(movie, new MovieExtensions(), true));
       Log.Info("  add video views section");
       AddSection(new ConfigPage(movie, new MovieViews(), true));*/
-      /*Log.Info("  add blu-ray postprocessing section");
-      AddSection(new ConfigPage(bd, new BDPostProcessing(), true));*/
+      Log.Info("  add blu-ray postprocessing section");
+      AddSection(new ConfigPage(bd, new BDPostProcessing(), true));
     }
 
     private void AddTabDvd()

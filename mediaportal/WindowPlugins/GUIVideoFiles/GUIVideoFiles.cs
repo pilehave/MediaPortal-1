@@ -139,6 +139,10 @@ namespace MediaPortal.GUI.Video
 
     private int _howToPlayAll = 3;
 
+    //Internal BDInternalMenu
+    private static bool _BDInternalMenu = true;
+    private static bool _BDDetect = false;
+
     #endregion
 
     #region constructors
@@ -221,6 +225,7 @@ namespace MediaPortal.GUI.Video
         _fileMenuEnabled = xmlreader.GetValueAsBool("filemenu", "enabled", true);
         _fileMenuPinCode = Util.Utils.DecryptPin(xmlreader.GetValueAsString("filemenu", "pincode", string.Empty));
         _howToPlayAll = xmlreader.GetValueAsInt("movies", "playallinfolder", 3);
+        _BDInternalMenu = xmlreader.GetValueAsBool("bdplayer", "useInternalBDMenu", true);
 
         _virtualDirectory = VirtualDirectories.Instance.Movies;
 
@@ -1642,6 +1647,8 @@ namespace MediaPortal.GUI.Video
     public static void PlayMovieFromPlayList(bool askForResumeMovie, int iMovieIndex, bool requestPin)
     {
       string filename;
+      _BDDetect = false;
+
       if (iMovieIndex == -1)
       {
         filename = _playlistPlayer.GetNext();
@@ -1668,8 +1675,13 @@ namespace MediaPortal.GUI.Video
           {
             title = movieDetails.Title;
           }
-          if (askForResumeMovie && !filename.EndsWith(@"\BDMV\index.bdmv"))
+          if (askForResumeMovie)
           {
+            if (filename.EndsWith(@"\BDMV\index.bdmv"))
+            {
+              _BDDetect = true;
+            }
+
             GUIResumeDialog.Result result =
               GUIResumeDialog.ShowResumeDialog(title, timeMovieStopped,
                                                GUIResumeDialog.MediaType.Video);
@@ -1699,7 +1711,7 @@ namespace MediaPortal.GUI.Video
 
       if (g_Player.Playing && timeMovieStopped > 0)
       {
-        if (g_Player.IsDVD)
+        if (g_Player.IsDVD && !_BDDetect)
         {
           g_Player.Player.SetResumeState(resumeData);
         }
