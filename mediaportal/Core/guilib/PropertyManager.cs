@@ -541,12 +541,23 @@ namespace MediaPortal.GUI.Library
     /// <returns>The value of the property.</returns>
     public static string Parse(string line)
     {
+      return Parse(line, GUIExpressionManager.ExpressionOptions.NONE);
+    }
+
+    /// <summary>
+    /// Parses a property request.
+    /// </summary>
+    /// <param name="line">The identification of the propertie (e.g.,#title).</param>
+    /// <param name="options">Expresson manager processing options.</param>
+    /// <returns>The value of the property.</returns>
+    public static string Parse(string line, GUIExpressionManager.ExpressionOptions options)
+    {
       if (line == null)
       {
         return string.Empty;
       }
 
-      line = GUIExpressionManager.Parse(line);
+      line = GUIExpressionManager.Parse(line, options);
 
       if (line.IndexOf('#') > -1)
       {
@@ -589,6 +600,22 @@ namespace MediaPortal.GUI.Library
       }
 
       return property;
+    }
+
+    /// <summary>
+    /// Removes the specified property from the property set.
+    /// </summary>
+    /// <param name="tag">name of the property</param>
+    public static void RemoveProperty(string tag)
+    {
+      string property = string.Empty;
+      if (tag != null && tag.IndexOf('#') > -1 && _properties.ContainsKey(tag))
+      {
+        lock (_properties)
+        {
+          _properties.Remove(tag);
+        }
+      }
     }
   }
 }
